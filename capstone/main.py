@@ -3,6 +3,7 @@ import argparse
 from ultralytics import YOLO
 import supervision as sv
 import time
+import numpy as np
 def parse_arguments()-> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Yolov11 live")
     parser.add_argument("--webcam-resolution",default=[1280,720],nargs=2,type=int)
@@ -35,7 +36,7 @@ def main():
     )
 
     confidence_threshold = 0.5
-    max_box_area = 0.7
+    max_box_area_ratio  = 0.6
     pTime = 0
     while True:
         ret, frame = cap.read()
@@ -45,6 +46,17 @@ def main():
         result = model(frame, agnostic_nms=True)[0]
         detections = sv.Detections.from_ultralytics(result)
         
+        # Filter by confidence
+        detections = detections[detections.confidence > confidence_threshold]
+
+        # Filter by bounding box size (area ratio)
+        if len(detections) > 0:
+            frame_area = frame.shape[0] * frame.shape[1]
+            box_areas = (detections.xyxy[:, 2] - detections.xyxy[:, 0]) * (detections.xyxy[:, 3] - detections.xyxy[:, 1])
+            area_ratios = box_areas / frame_area
+            size_mask = area_ratios < max_box_area_ratio
+            detections = detections[size_mask]
+
         #  labels with class names and confidence scores
         labels = [
             f"{model.names[class_id]} {confidence:.2f}"
