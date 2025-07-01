@@ -4,17 +4,32 @@ from ultralytics import YOLO
 import supervision as sv
 import time
 import numpy as np
+import torch  # Add this import
+
 def parse_arguments()-> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Yolov11 live")
     parser.add_argument("--webcam-resolution",default=[1280,720],nargs=2,type=int)
+    parser.add_argument("--device", default="auto", help="Device to run inference on: 'cpu', 'cuda', 'cuda:0', etc.")  # Add this line
     args = parser.parse_args()
     return args
-
-
 
 def main():
     args = parse_arguments()
     frame_width, frame_height = args.webcam_resolution
+    
+    # Check GPU availability and set device
+    if args.device == "auto":
+        if torch.cuda.is_available():
+            device = "cuda"
+            print(f"GPU detected: {torch.cuda.get_device_name(0)}")
+            print(f"CUDA version: {torch.version.cuda}")
+        else:
+            device = "cpu"
+            print("No GPU detected, using CPU")
+    else:
+        device = args.device
+        print(f"Using device: {device}")
+    
     cap = cv2.VideoCapture(0)  
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, frame_width)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, frame_height)
@@ -23,7 +38,11 @@ def main():
     if not cap.isOpened():
         print("Error: Could not open camera")
         return
+    
+    # Load model and move to GPU
     model = YOLO("../best.pt")
+    model.to(device)  # Move model to GPU
+    print(f"Model loaded on: {device}")
 
     box_annotator = sv.BoxAnnotator(
         thickness=2
@@ -35,7 +54,7 @@ def main():
         text_position=sv.Position.TOP_LEFT
     )
 
-    confidence_threshold = 0.5
+    confidence_threshold = 0.6
     max_box_area_ratio  = 0.6
     pTime = 0
     while True:
@@ -43,6 +62,8 @@ def main():
         if not ret:
             print("Error: Could not read frame")
             break
+        
+        # Inference will automatically run on GPU now
         result = model(frame, agnostic_nms=True)[0]
         detections = sv.Detections.from_ultralytics(result)
         
@@ -73,7 +94,6 @@ def main():
                 3, (255, 0, 0), 3)
        
         cv2.imshow("yolo11l", frame)
-        
         
         if cv2.waitKey(30) == 27:  # 27 bhaneko esc key
             break
